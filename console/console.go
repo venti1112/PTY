@@ -10,8 +10,8 @@ import (
 	"path/filepath"
 	"syscall"
 
-	"github.com/MCSManager/pty/console/iface"
-	"github.com/MCSManager/pty/utils"
+	"edgecube/pty/console/iface"
+	"edgecube/pty/utils"
 	"github.com/creack/pty"
 )
 

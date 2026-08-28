@@ -1,6 +1,6 @@
 package main
 
-import "github.com/MCSManager/pty/cmd/start"
+import "edgecube/pty/cmd/start"
 
 func main() {
 	start.Main()

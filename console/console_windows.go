@@ -11,9 +11,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/MCSManager/pty/console/go-winpty"
-	"github.com/MCSManager/pty/console/iface"
-	"github.com/MCSManager/pty/utils"
+	"edgecube/pty/console/go-winpty"
+	"edgecube/pty/console/iface"
+	"edgecube/pty/utils"
 	mutex "github.com/juju/mutex/v2"
 )
 

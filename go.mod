@@ -1,4 +1,4 @@
-module github.com/MCSManager/pty
+module edgecube/pty
 
 go 1.21
 

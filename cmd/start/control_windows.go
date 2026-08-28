@@ -2,47 +2,56 @@ package start
 
 import (
 	"fmt"
-	"io"
+	"net"
 	"time"
 
-	pty "github.com/MCSManager/pty/console"
+	pty "edgecube/pty/console"
 
 	winio "github.com/Microsoft/go-winio"
 )
 
 // \\.\pipe\mypipe
-func runControl(fifo string, con pty.Console) error {
-	n, err := winio.ListenPipe(fifo, &winio.PipeConfig{})
+// runControl:监听 Windows 命名管道控制通道(双向),接受 daemon 连接,每连接独立 goroutine。
+func runControl(pipe string, con pty.Console) error {
+	n, err := winio.ListenPipe(pipe, &winio.PipeConfig{})
 	if err != nil {
-		return fmt.Errorf("open fifo error: %w", err)
+		return fmt.Errorf("open control pipe error: %w", err)
 	}
 	defer n.Close()
 
 	if testFifoResize {
 		go func() {
 			time.Sleep(time.Second * 5)
-			_ = testWinResize(fifo)
+			_ = testWinResize(pipe)
 		}()
 	}
 
 	for {
 		conn, err := n.Accept()
 		if err != nil {
-			return fmt.Errorf("accept fifo error: %w", err)
+			return fmt.Errorf("accept control pipe error: %w", err)
 		}
 		go func() {
 			defer conn.Close()
-			u := newConnUtils(conn, io.Discard)
-			_ = handleConn(u, con)
+			s := &controlSession{u: newConnUtils(conn, conn)}
+			setCurrentSession(s)
+			defer clearCurrentSession(s)
+			_ = handleConn(s.u, con)
 		}()
 	}
 }
 
-func testWinResize(fifo string) error {
-	n, err := winio.DialPipe(fifo, nil)
+func dialControlImpl(path string) (net.Conn, error) {
+	timeout := time.Second
+	return winio.DialPipe(path, &timeout)
+}
+
+func testWinResize(pipe string) error {
+	n, err := dialControl(pipe)
 	if err != nil {
-		return fmt.Errorf("open fifo error: %w", err)
+		return fmt.Errorf("open control pipe error: %w", err)
 	}
-	u := newConnUtils(nil, n)
+	defer n.Close()
+	u := newConnUtils(n, n)
 	return testResize(u)
 }

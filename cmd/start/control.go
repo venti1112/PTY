@@ -5,49 +5,61 @@ package start
 
 import (
 	"fmt"
-	"io"
+	"net"
 	"os"
-	"syscall"
 	"time"
 
-	pty "github.com/MCSManager/pty/console"
+	pty "edgecube/pty/console"
 )
 
-func runControl(fifo string, con pty.Console) error {
-	err := os.Remove(fifo)
+// runControl:监听 Unix domain socket 控制通道(替代单向 FIFO,支持 PTY → daemon 双向上报),
+// 接受 daemon 连接,每连接独立 goroutine 处理 RESIZE 帧;连接断开后继续等待重连。
+func runControl(sock string, con pty.Console) error {
+	if err := os.Remove(sock); err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("remove control socket error: %w", err)
+	}
+	ln, err := net.Listen("unix", sock)
 	if err != nil {
-		if !os.IsNotExist(err) {
-			return fmt.Errorf("remove fifo error: %w", err)
-		}
+		return fmt.Errorf("listen control socket error: %w", err)
 	}
-	if err := syscall.Mkfifo(fifo, 0666); err != nil {
-		return fmt.Errorf("create fifo error: %w", err)
-	}
+	defer ln.Close()
 
 	if testFifoResize {
 		go func() {
 			time.Sleep(time.Second * 5)
-			_ = testUnixResize(fifo)
+			_ = testUnixResize(sock)
 		}()
 	}
 
 	for {
-		f, err := os.OpenFile(fifo, os.O_RDONLY, os.ModeNamedPipe)
+		conn, err := ln.Accept()
 		if err != nil {
-			return fmt.Errorf("open fifo error: %w", err)
+			return fmt.Errorf("accept control socket error: %w", err)
 		}
-		defer f.Close()
-		u := newConnUtils(f, io.Discard)
-		_ = handleConn(u, con)
+		go func() {
+			defer conn.Close()
+			s := &controlSession{u: newConnUtils(conn, conn)}
+			setCurrentSession(s)
+			defer clearCurrentSession(s)
+			_ = handleConn(s.u, con)
+		}()
 	}
 }
 
-func testUnixResize(fifo string) error {
-	n, err := os.OpenFile(fifo, os.O_WRONLY, os.ModeNamedPipe)
+func dialControlImpl(path string) (net.Conn, error) {
+	conn, err := net.DialTimeout("unix", path, time.Second)
 	if err != nil {
-		return fmt.Errorf("open fifo error: %w", err)
+		return nil, err
 	}
-	defer n.Close()
-	u := newConnUtils(nil, n)
+	return conn, nil
+}
+
+func testUnixResize(sock string) error {
+	conn, err := dialControl(sock)
+	if err != nil {
+		return fmt.Errorf("open control socket error: %w", err)
+	}
+	defer conn.Close()
+	u := newConnUtils(conn, conn)
 	return testResize(u)
 }
